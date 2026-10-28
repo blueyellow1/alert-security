@@ -59,7 +59,8 @@ async function checkContractEvents(fromBlock, toBlock) {
   });
 
   for (const log of logs) {
-    let event;
+    let event = null;
+    let message = "";
 
     try {
       event = contractInterface.parseLog({
@@ -67,35 +68,45 @@ async function checkContractEvents(fromBlock, toBlock) {
         data: log.data
       });
     } catch {
-      continue;
+      // Some SecurityAlert logs may not decode correctly.
     }
 
-    if (!event) continue;
-
-    let message;
-
-    if (event.name === 'Paused') {
+    if (event?.name === "Paused") {
       message =
         `PORTLG contract PAUSED\n` +
         `By: ${event.args.by}\n` +
         `Transaction: ${log.transactionHash}`;
-    } else if (event.name === 'Unpaused') {
+    } else if (event?.name === "Unpaused") {
       message =
         `PORTLG contract UNPAUSED\n` +
         `By: ${event.args.by}\n` +
         `Transaction: ${log.transactionHash}`;
-    } else if (event.name === 'SecurityAlert') {
+    } else if (event?.name === "SecurityAlert") {
+      let user = "Not decoded";
+      let action = "Protected action detected";
+
+      try { user = event.args.user ?? user; } catch {}
+      try { action = event.args.action ?? action; } catch {}
+
       message =
-        `PORTLG protected action detected\n` +
-        `User: ${event.args.user}\n` +
-        `Action: ${event.args.action}\n` +
+        `PORTLG Security Alert\n` +
+        `User: ${user}\n` +
+        `Action: ${action}\n` +
         `Transaction: ${log.transactionHash}`;
-    } else {
-      continue;
+    } else if (
+      log.topics[0] ===
+      contractInterface.getEvent("SecurityAlert").topicHash
+    ) {
+      message =
+        `PORTLG Security Alert\n` +
+        `Protected action detected\n` +
+        `Transaction: ${log.transactionHash}`;
     }
 
-    console.log(message);
-    await sendAlert(message);
+    if (message) {
+      console.log(message);
+      await sendAlert(message);
+    }
   }
 }
 
